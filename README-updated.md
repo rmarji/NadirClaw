@@ -11,11 +11,10 @@ Open-source LLM router that saves you money. Simple prompts go to cheap/local mo
 
 NadirClaw sits between your AI tool and your LLM providers as an OpenAI-compatible proxy. It classifies every prompt in ~10ms and routes it to the right model. Works with any tool that speaks the OpenAI API: [OpenClaw](https://openclaw.dev), [Codex](https://github.com/openai/codex), Claude Code, Continue, Cursor, or plain `curl`.
 
-> **🔒 Your keys. Your models. No middleman.** NadirClaw runs locally and routes directly to providers. No third-party proxy, no subsidized tokens, no platform that can pull the plug on you. [Why this matters.](docs/vs-clawrouter.md)
+> **🛡️ No platform risk. No subsidized tokens. Your keys, your models.**  
+> Direct provider access means no surprise bans, no OAuth revocations, no middleman deciding your usage is "malicious."
 
-> **Comparisons:** [NadirClaw vs OpenRouter](docs/comparison.md) | [NadirClaw vs ClawRouter](docs/vs-clawrouter.md)
->
-> **CI/CD?** Use the [NadirClaw GitHub Action](https://github.com/doramirdor/nadirclaw-action) to route your CI LLM calls automatically.
+> **How does NadirClaw compare to OpenRouter?** See [NadirClaw vs OpenRouter](docs/comparison.md).
 
 <p align="center">
   <img src="docs/images/architecture.png" alt="NadirClaw Architecture" width="700" />
@@ -69,8 +68,6 @@ That's it. NadirClaw starts on `http://localhost:8856` with sensible defaults (G
 - **Request reporting** — `nadirclaw report` analyzes your JSONL logs with filters, latency stats, tier breakdown, and token usage
 - **Raw logging** — optional `--log-raw` flag to capture full request/response content for debugging and replay
 - **OpenTelemetry tracing** — optional distributed tracing with GenAI semantic conventions (`pip install nadirclaw[telemetry]`)
-- **Cost savings calculator** — `nadirclaw savings` shows exactly how much money you've saved, with monthly projections
-- **GitHub Action** — [`doramirdor/nadirclaw-action`](https://github.com/doramirdor/nadirclaw-action) for CI/CD pipelines
 
 ## Prerequisites
 
@@ -487,8 +484,6 @@ nadirclaw serve --log-raw    # Start with full request/response logging
 nadirclaw classify           # Classify a prompt (no server needed)
 nadirclaw report             # Show a summary report of request logs
 nadirclaw report --since 24h # Report for the last 24 hours
-nadirclaw savings            # Show how much money NadirClaw saved you
-nadirclaw savings --since 7d # Savings for the last 7 days
 nadirclaw status             # Show config, credentials, and server status
 nadirclaw auth add           # Add an API key for any provider
 nadirclaw auth status        # Show configured credentials (masked)
