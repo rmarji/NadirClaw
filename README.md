@@ -67,7 +67,7 @@ That's it. NadirClaw starts on `http://localhost:8856` with sensible defaults (G
 - **Model aliases** — use short names like `sonnet`, `flash`, `gpt4` instead of full model IDs
 - **Session persistence** — pins the model for multi-turn conversations so you don't bounce between models mid-thread
 - **Context-window filtering** — auto-swaps to a model with a larger context window when your conversation is too long
-- **Rate limit fallback** — if the primary model is rate-limited (429), automatically falls back to the other tier's model instead of failing
+- **Fallback chains** — if a model fails (429, 5xx, timeout), NadirClaw cascades through a configurable chain of fallback models until one succeeds
 - **Streaming support** — full SSE streaming compatible with OpenClaw, Codex, and other streaming clients
 - **Native Gemini support** — calls Gemini models directly via the Google GenAI SDK (not through LiteLLM)
 - **OAuth login** — use your subscription with `nadirclaw auth <provider> login` (OpenAI, Anthropic, Google), no API key needed
@@ -202,6 +202,7 @@ NADIRCLAW_SIMPLE_MODEL=gemini-3-flash-preview          # cheap/free model
 NADIRCLAW_COMPLEX_MODEL=gemini-2.5-pro                 # premium model
 NADIRCLAW_REASONING_MODEL=o3                           # reasoning tasks (optional, defaults to complex)
 NADIRCLAW_FREE_MODEL=ollama/llama3.1:8b                # free fallback (optional, defaults to simple)
+NADIRCLAW_FALLBACK_CHAIN=gpt-4.1,claude-sonnet-4-5-20250929,gemini-2.5-flash  # cascade order on failure (optional)
 ```
 
 ### Example Setups
@@ -695,7 +696,7 @@ NadirClaw uses a binary complexity classifier based on sentence embeddings:
    - **Gemini models** — called natively via the [Google GenAI SDK](https://github.com/googleapis/python-genai) for best performance
    - **All other models** — called via [LiteLLM](https://docs.litellm.ai), which provides a unified interface to 100+ providers
 
-6. **Rate limit fallback**: If the selected model returns a 429 rate limit error, NadirClaw retries once, then automatically falls back to the other tier's model. If both are rate-limited, it returns a user-friendly error message.
+6. **Fallback chains**: If the selected model fails (429 rate limit, 5xx error, or timeout), NadirClaw cascades through a configurable fallback chain. Set `NADIRCLAW_FALLBACK_CHAIN=gpt-4.1,claude-sonnet-4-5-20250929,gemini-2.5-flash` to define the order. Default chain uses all your configured tier models.
 
 Classification takes ~10ms on a warm encoder. The first request takes ~2-3 seconds to load the embedding model.
 
@@ -800,6 +801,7 @@ Auth is disabled by default (local-only). Set `NADIRCLAW_AUTH_TOKEN` to require 
 | `NADIRCLAW_COMPLEX_MODEL` | `openai-codex/gpt-5.3-codex` | Model for complex prompts |
 | `NADIRCLAW_REASONING_MODEL` | *(falls back to complex)* | Model for reasoning tasks |
 | `NADIRCLAW_FREE_MODEL` | *(falls back to simple)* | Free fallback model |
+| `NADIRCLAW_FALLBACK_CHAIN` | *(all tier models)* | Comma-separated cascade order on model failure |
 | `NADIRCLAW_AUTH_TOKEN` | *(empty — auth disabled)* | Set to require a bearer token |
 | `GEMINI_API_KEY` | -- | Google Gemini API key (also accepts `GOOGLE_API_KEY`) |
 | `ANTHROPIC_API_KEY` | -- | Anthropic API key |

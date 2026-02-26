@@ -720,10 +720,11 @@ async def _call_with_fallback(
     provider: str | None,
     analysis_info: Dict[str, Any],
 ) -> tuple:
-    """Try the selected model; on rate limit, fall back to the other tier.
+    """Try the selected model; on failure, cascade through the fallback chain.
 
-    The primary model retries up to MAX_RETRIES times.
-    The fallback model is tried once (no retries) to avoid long waits.
+    The fallback chain is configured via NADIRCLAW_FALLBACK_CHAIN env var.
+    Each model in the chain is tried once (no retries) after the primary fails.
+    Handles 429 rate limits, 5xx errors, and timeouts.
 
     Returns (response_data, actual_model_used, updated_analysis_info).
     """
@@ -732,56 +733,65 @@ async def _call_with_fallback(
     try:
         response_data = await _dispatch_model(selected_model, request, provider)
         return response_data, selected_model, analysis_info
-    except RateLimitExhausted as e:
-        # Determine fallback model (swap tiers)
-        if selected_model == settings.SIMPLE_MODEL:
-            fallback_model = settings.COMPLEX_MODEL
-        elif selected_model == settings.COMPLEX_MODEL:
-            fallback_model = settings.SIMPLE_MODEL
-        else:
-            # Direct model request — try simple first, then complex
-            fallback_model = settings.SIMPLE_MODEL
+    except (RateLimitExhausted, Exception) as primary_error:
+        if isinstance(primary_error, HTTPException):
+            raise  # Don't fallback on validation/auth errors
 
-        # Don't fall back to the same model
-        if fallback_model == selected_model:
-            logger.error(
-                "Rate limit on %s but fallback is the same model. Returning error.",
-                selected_model,
+        # Build fallback chain: configured chain minus the failed model
+        chain = [m for m in settings.FALLBACK_CHAIN if m != selected_model]
+
+        if not chain:
+            if isinstance(primary_error, RateLimitExhausted):
+                return _rate_limit_error_response(selected_model), selected_model, analysis_info
+            raise primary_error
+
+        failed_models = [selected_model]
+        last_error = primary_error
+
+        for fallback_model in chain:
+            logger.warning(
+                "⚡ %s failed (%s) — trying fallback %s (%d/%d in chain)",
+                selected_model if len(failed_models) == 1 else failed_models[-1],
+                type(last_error).__name__,
+                fallback_model,
+                len(failed_models),
+                len(chain),
             )
-            return _rate_limit_error_response(selected_model), selected_model, analysis_info
+            fallback_provider = detect_provider(fallback_model)
 
-        logger.warning(
-            "⚡ Rate limit on %s — falling back to %s",
-            selected_model, fallback_model,
+            try:
+                if fallback_provider == "google":
+                    response_data = await _call_gemini(
+                        fallback_model, request, fallback_provider,
+                        _retry_count=99,  # One shot, no retries
+                    )
+                else:
+                    response_data = await _call_litellm(
+                        fallback_model, request, fallback_provider,
+                    )
+                analysis_info = {
+                    **analysis_info,
+                    "fallback_from": selected_model,
+                    "fallback_chain_tried": failed_models,
+                    "selected_model": fallback_model,
+                    "strategy": analysis_info.get("strategy", "smart-routing") + "+fallback",
+                }
+                return response_data, fallback_model, analysis_info
+            except (RateLimitExhausted, Exception) as chain_error:
+                if isinstance(chain_error, HTTPException):
+                    raise
+                failed_models.append(fallback_model)
+                last_error = chain_error
+                continue
+
+        # All models in chain exhausted
+        logger.error(
+            "All models in fallback chain exhausted: %s",
+            failed_models,
         )
-        fallback_provider = detect_provider(fallback_model)
-
-        try:
-            # Call fallback without retries — one shot only.
-            # Pass _retry_count >= MAX_RETRIES so it raises immediately on 429.
-            if fallback_provider == "google":
-                response_data = await _call_gemini(
-                    fallback_model, request, fallback_provider,
-                    _retry_count=99,  # Skip retries — one shot only
-                )
-            else:
-                response_data = await _call_litellm(
-                    fallback_model, request, fallback_provider,
-                )
-            analysis_info = {
-                **analysis_info,
-                "fallback_from": selected_model,
-                "selected_model": fallback_model,
-                "strategy": analysis_info.get("strategy", "smart-routing") + "+fallback",
-            }
-            return response_data, fallback_model, analysis_info
-        except RateLimitExhausted:
-            # Both models are rate-limited
-            logger.error(
-                "Both %s and %s are rate-limited. Returning error.",
-                selected_model, fallback_model,
-            )
+        if isinstance(last_error, RateLimitExhausted):
             return _rate_limit_error_response(selected_model), selected_model, analysis_info
+        raise last_error
 
 
 def _rate_limit_error_response(model: str) -> Dict[str, Any]:

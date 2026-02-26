@@ -96,6 +96,24 @@ class Settings:
         return os.getenv("NADIRCLAW_FREE_MODEL", "") or self.SIMPLE_MODEL
 
     @property
+    def FALLBACK_CHAIN(self) -> list[str]:
+        """Ordered fallback chain. When a model fails, try the next one.
+
+        Defaults to [COMPLEX_MODEL, SIMPLE_MODEL] (existing behavior).
+        Set NADIRCLAW_FALLBACK_CHAIN to customize, e.g.:
+          NADIRCLAW_FALLBACK_CHAIN=gpt-4.1,claude-sonnet-4-5-20250929,gemini-2.5-flash
+        """
+        raw = os.getenv("NADIRCLAW_FALLBACK_CHAIN", "")
+        if raw:
+            return [m.strip() for m in raw.split(",") if m.strip()]
+        # Default: deduplicated list of all configured tier models
+        chain = []
+        for m in [self.COMPLEX_MODEL, self.SIMPLE_MODEL, self.REASONING_MODEL, self.FREE_MODEL]:
+            if m and m not in chain:
+                chain.append(m)
+        return chain
+
+    @property
     def has_explicit_tiers(self) -> bool:
         """True if SIMPLE_MODEL and COMPLEX_MODEL are explicitly set via env."""
         return bool(
