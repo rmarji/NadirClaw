@@ -870,11 +870,32 @@ def run_setup_wizard(reconfigure: bool = False):
         click.echo("  Ollama Configuration")
         click.echo("-" * 56)
         click.echo()
-        raw_base = click.prompt(
-            "  Ollama API base URL",
-            default=OLLAMA_DEFAULT_API_BASE,
-        )
-        ollama_api_base = _normalize_ollama_api_base(raw_base)
+
+        # Offer auto-discovery
+        if click.confirm("  Auto-discover Ollama instances?", default=True):
+            from nadirclaw.ollama_discovery import discover_best_ollama
+            click.echo("  Scanning...", nl=False)
+            best = discover_best_ollama()
+            click.echo()
+            if best:
+                models = "model" if best["model_count"] == 1 else "models"
+                click.echo(f"  Found: {best['url']} ({best['model_count']} {models})")
+                if click.confirm("  Use this instance?", default=True):
+                    ollama_api_base = best["url"]
+                    click.echo()
+            else:
+                click.echo("  No Ollama instances found.")
+                click.echo("  Defaulting to localhost:11434")
+                ollama_api_base = OLLAMA_DEFAULT_API_BASE
+
+        # Manual configuration fallback
+        if not ollama_api_base:
+            raw_base = click.prompt(
+                "  Ollama API base URL",
+                default=OLLAMA_DEFAULT_API_BASE,
+            )
+            ollama_api_base = _normalize_ollama_api_base(raw_base)
+
         click.echo(f"  Using: {ollama_api_base}\n")
 
     # Step 3: Credential collection

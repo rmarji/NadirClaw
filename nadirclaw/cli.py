@@ -939,5 +939,32 @@ api_key = "local"
     click.echo("  2. Run Codex:        codex")
 
 
+@main.group()
+def ollama():
+    """Ollama discovery and management commands."""
+    pass
+
+
+@ollama.command()
+@click.option("--scan-network", is_flag=True, help="Scan local network (slower)")
+def discover(scan_network):
+    """Discover Ollama instances on localhost and local network."""
+    from nadirclaw.ollama_discovery import discover_ollama_instances, format_discovery_results
+
+    click.echo("Scanning for Ollama instances...")
+    if scan_network:
+        click.echo("(network scan enabled — this may take a few seconds)")
+
+    instances = discover_ollama_instances(scan_network=scan_network)
+
+    click.echo()
+    click.echo(format_discovery_results(instances))
+
+    if instances:
+        click.echo()
+        click.echo("To use an instance, update your ~/.nadirclaw/.env:")
+        click.echo(f"  OLLAMA_API_BASE={instances[0]['url']}")
+
+
 if __name__ == "__main__":
     main()

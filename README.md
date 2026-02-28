@@ -294,6 +294,27 @@ nadirclaw serve \
 | `qwen3-coder` | 19 GB | Code-heavy complex tier |
 | `deepseek-r1:14b` | 9 GB | Reasoning-heavy complex tier |
 
+### Auto-Discovery
+
+NadirClaw can automatically discover Ollama instances on your local network:
+
+```bash
+# Quick scan (localhost only)
+nadirclaw ollama discover
+
+# Network scan (finds instances on your local subnet)
+nadirclaw ollama discover --scan-network
+```
+
+The `nadirclaw setup` wizard offers auto-discovery when you select Ollama as a provider, so you don't need to know the URL beforehand. If Ollama is running on a different machine (like a home server or VM), auto-discovery will find it and configure the `OLLAMA_API_BASE` automatically.
+
+Manual configuration is still supported via the `OLLAMA_API_BASE` environment variable:
+
+```bash
+# Connect to Ollama on a different host
+OLLAMA_API_BASE=http://192.168.1.100:11434 nadirclaw serve
+```
+
 ## Usage with OpenClaw
 
 [OpenClaw](https://openclaw.dev) is a personal AI assistant that bridges messaging services to AI coding agents. NadirClaw integrates as a model provider so OpenClaw's requests are automatically routed to the right model.
