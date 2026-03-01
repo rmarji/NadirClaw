@@ -1,5 +1,5 @@
-# NadirClaw
-<img alt="NadirClaw" src="logo_rb.png" />
+# NadirClaw — Open-Source LLM Router & AI Cost Optimizer
+<img alt="NadirClaw — Smart LLM Router for AI Cost Reduction" src="logo_rb.png" />
 
 [![PyPI](https://img.shields.io/pypi/v/nadirclaw)](https://pypi.org/project/nadirclaw/)
 [![CI](https://github.com/doramirdor/NadirClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/doramirdor/NadirClaw/actions)
@@ -7,9 +7,21 @@
 [![License](https://img.shields.io/github/license/doramirdor/NadirClaw)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/doramirdor/NadirClaw?style=social)](https://github.com/doramirdor/NadirClaw)
 
-Open-source LLM router that saves you money. Simple prompts go to cheap/local models, complex prompts go to premium models -- automatically.
+**NadirClaw is an open-source LLM router that reduces your AI API costs by 40-70%.** It automatically routes simple prompts to cheap or local models and complex prompts to premium models — no code changes required.
 
-NadirClaw sits between your AI tool and your LLM providers as an OpenAI-compatible proxy. It classifies every prompt in ~10ms and routes it to the right model. Works with any tool that speaks the OpenAI API: [OpenClaw](https://openclaw.dev), [Codex](https://github.com/openai/codex), Claude Code, Continue, Cursor, or plain `curl`.
+NadirClaw runs locally as an **OpenAI-compatible proxy** and sits between your AI tools and LLM providers. It classifies every prompt in ~10ms using sentence embeddings and routes it to the optimal model. Drop-in compatible with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [OpenClaw](https://openclaw.dev), Continue, Cursor, or any OpenAI API client.
+
+## Why NadirClaw?
+
+Most LLM requests don't need a premium model. In typical coding agent sessions, **60-70% of prompts are simple** (reading files, short questions, continuations) and can be handled by models that cost 10-20x less. NadirClaw detects this automatically and routes accordingly — no prompt engineering, no code changes, no third-party service.
+
+**Key benefits:**
+- 💰 **Cut AI API costs by 40-70%** — real savings from day one
+- ⚡ **~10ms classification overhead** — you won't notice it
+- 🔌 **Drop-in proxy** — works with any OpenAI-compatible tool
+- 🏠 **Runs locally** — your API keys never leave your machine
+- 🔄 **Fallback chains** — automatic failover when models are down
+- 📊 **Built-in cost tracking** — dashboard, reports, budget alerts
 
 > **🔒 Your keys. Your models. No middleman.** NadirClaw runs locally and routes directly to providers. No third-party proxy, no subsidized tokens, no platform that can pull the plug on you. [Why this matters.](docs/vs-clawrouter.md)
 
@@ -537,7 +549,7 @@ curl http://localhost:8856/v1/chat/completions \
   -d '{"model": "sonnet", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-## Routing Intelligence
+## Routing Intelligence — How NadirClaw Classifies Prompts
 
 <p align="center">
   <img src="docs/images/routing-flow.png" alt="Routing flow" width="700" />
@@ -797,7 +809,7 @@ But without a classifier, everything hits the expensive default. NadirClaw's job
 
 Classification takes ~10ms on a warm encoder. The first request takes ~2-3 seconds to load the embedding model.
 
-## Cost Savings & Benchmarks
+## Cost Savings & Benchmarks — How Much Does NadirClaw Save?
 
 Real-world usage shows NadirClaw typically reduces LLM costs by 40-70% depending on your workload and model choices.
 
