@@ -11,7 +11,7 @@ has already shipped.
 ## v0.8.0 — Routing & Resilience _(~2–3 weeks)_
 
 - [ ] **Multi-tier routing** — add a `mid` tier between `simple` and `complex`; configurable
-      score thresholds via `NADIRCLAW_TIER_THRESHOLDS` so users can tune buckets without code changes
+      score thresholds via a new env var (proposed: `NADIRCLAW_TIER_THRESHOLDS`) so users can tune buckets without code changes
 - [ ] **Provider health-aware routing** — track rolling error rates per provider (429 / 5xx /
       timeout) and downgrade to the next healthy option automatically; expose health scores in
       `nadirclaw status`
@@ -23,7 +23,7 @@ has already shipped.
 ## v0.8.1 — Caching & Performance _(~2 weeks)_
 
 - [ ] **Persistent cache** — opt-in SQLite-backed prompt cache that survives restarts
-      (`NADIRCLAW_CACHE_BACKEND=sqlite`); existing in-memory LRU remains the default
+      (proposed: `NADIRCLAW_CACHE_BACKEND=sqlite`); existing in-memory LRU remains the default
 - [ ] **Embedding deduplication** — skip recomputing sentence embeddings for prompts seen in the
       last N minutes (configurable); reduces classifier latency on repeated queries
 - [ ] **Lazy-load sentence transformer** — defer model load until the first classify call; cuts
@@ -62,7 +62,7 @@ has already shipped.
 - [ ] **Custom classifier training** — `nadirclaw train --data prompts.jsonl` rebuilds centroids
       from your own labelled data; makes the classifier adapt to domain-specific prompt patterns
 - [ ] **Distributed rate limiting** — optional Redis backend
-      (`NADIRCLAW_RATE_LIMIT_BACKEND=redis`) for multi-instance deployments sharing a single
+      (proposed: `NADIRCLAW_RATE_LIMIT_BACKEND=redis`) for multi-instance deployments sharing a single
       rate-limit state
 - [ ] **Documentation site** — MkDocs (or similar) generated from `docs/`; published via GitHub
       Pages; covers installation, configuration, integrations, and the HTTP API
