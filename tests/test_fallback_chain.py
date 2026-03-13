@@ -40,6 +40,48 @@ class TestFallbackChainConfig:
         assert s.FALLBACK_CHAIN.count("same-model") == 1
 
 
+class TestPerTierFallbackConfig:
+    def test_per_tier_simple_fallback(self, monkeypatch):
+        """NADIRCLAW_SIMPLE_FALLBACK should override global chain for simple tier."""
+        monkeypatch.setenv("NADIRCLAW_SIMPLE_FALLBACK", "flash-a,flash-b")
+        monkeypatch.setenv("NADIRCLAW_FALLBACK_CHAIN", "global-a,global-b")
+        from nadirclaw.settings import Settings
+        s = Settings()
+        assert s.get_tier_fallback_chain("simple") == ["flash-a", "flash-b"]
+        # Other tiers should still use global chain
+        assert s.get_tier_fallback_chain("complex") == ["global-a", "global-b"]
+
+    def test_per_tier_complex_fallback(self, monkeypatch):
+        """NADIRCLAW_COMPLEX_FALLBACK should override global chain for complex tier."""
+        monkeypatch.setenv("NADIRCLAW_COMPLEX_FALLBACK", "big-a,big-b")
+        monkeypatch.delenv("NADIRCLAW_FALLBACK_CHAIN", raising=False)
+        from nadirclaw.settings import Settings
+        s = Settings()
+        assert s.get_tier_fallback_chain("complex") == ["big-a", "big-b"]
+
+    def test_per_tier_mid_fallback(self, monkeypatch):
+        """NADIRCLAW_MID_FALLBACK should override global chain for mid tier."""
+        monkeypatch.setenv("NADIRCLAW_MID_FALLBACK", "mid-a,mid-b")
+        from nadirclaw.settings import Settings
+        s = Settings()
+        assert s.get_tier_fallback_chain("mid") == ["mid-a", "mid-b"]
+
+    def test_no_per_tier_falls_back_to_global(self, monkeypatch):
+        """Without per-tier env var, should use global chain."""
+        monkeypatch.setenv("NADIRCLAW_FALLBACK_CHAIN", "global-x,global-y")
+        monkeypatch.delenv("NADIRCLAW_SIMPLE_FALLBACK", raising=False)
+        from nadirclaw.settings import Settings
+        s = Settings()
+        assert s.get_tier_fallback_chain("simple") == ["global-x", "global-y"]
+
+    def test_empty_tier_string_uses_global(self, monkeypatch):
+        """Empty tier name should return global chain."""
+        monkeypatch.setenv("NADIRCLAW_FALLBACK_CHAIN", "g1,g2")
+        from nadirclaw.settings import Settings
+        s = Settings()
+        assert s.get_tier_fallback_chain("") == ["g1", "g2"]
+
+
 class TestFallbackChainBehavior:
     """Integration tests for fallback chain runtime behavior."""
 

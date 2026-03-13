@@ -18,7 +18,7 @@ import os
 import logging
 import time
 from threading import Lock
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger("nadirclaw")
 
@@ -125,7 +125,7 @@ class ModelRateLimiter:
     # Status / introspection
     # ------------------------------------------------------------------
 
-    def get_status(self) -> Dict[str, any]:
+    def get_status(self) -> Dict[str, Any]:
         """Return current rate limit status for all configured models."""
         now = time.time()
         window = 60

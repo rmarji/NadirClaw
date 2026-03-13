@@ -856,8 +856,10 @@ async def _call_with_fallback(
         if isinstance(primary_error, HTTPException):
             raise  # Don't fallback on validation/auth errors
 
-        # Build fallback chain: configured chain minus the failed model
-        chain = [m for m in settings.FALLBACK_CHAIN if m != selected_model]
+        # Build fallback chain: use per-tier chain if configured, else global
+        tier = analysis_info.get("tier", "")
+        full_chain = settings.get_tier_fallback_chain(tier) if tier else settings.FALLBACK_CHAIN
+        chain = [m for m in full_chain if m != selected_model]
 
         if not chain:
             if isinstance(primary_error, RateLimitExhausted):
@@ -1609,7 +1611,9 @@ async def _stream_with_fallback(
     """
     from nadirclaw.credentials import detect_provider
 
-    models_to_try = [selected_model] + [m for m in settings.FALLBACK_CHAIN if m != selected_model]
+    tier = analysis_info.get("tier", "")
+    full_chain = settings.get_tier_fallback_chain(tier) if tier else settings.FALLBACK_CHAIN
+    models_to_try = [selected_model] + [m for m in full_chain if m != selected_model]
     created = int(time.time())
     failed_models: list[str] = []
     last_error: Exception | None = None

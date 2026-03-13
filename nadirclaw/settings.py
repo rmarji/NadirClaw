@@ -1,9 +1,12 @@
 """Minimal env-based configuration for NadirClaw."""
 
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+_settings_logger = logging.getLogger(__name__)
 
 # Load .env from ~/.nadirclaw/.env if it exists
 _nadirclaw_dir = Path.home() / ".nadirclaw"
@@ -99,7 +102,17 @@ class Settings:
                 try:
                     return (float(parts[0]), float(parts[1]))
                 except ValueError:
-                    pass
+                    _settings_logger.warning(
+                        "Invalid NADIRCLAW_TIER_THRESHOLDS=%r — expected two floats "
+                        "(e.g. '0.35,0.65'). Falling back to defaults.",
+                        raw,
+                    )
+            else:
+                _settings_logger.warning(
+                    "Invalid NADIRCLAW_TIER_THRESHOLDS=%r — expected two comma-separated "
+                    "values. Falling back to defaults.",
+                    raw,
+                )
         return (0.35, 0.65)
 
     @property
@@ -151,6 +164,23 @@ class Settings:
             if m and m not in chain:
                 chain.append(m)
         return chain
+
+    def get_tier_fallback_chain(self, tier: str) -> list[str]:
+        """Get the fallback chain for a specific tier.
+
+        Per-tier chains are configured via env vars:
+          NADIRCLAW_SIMPLE_FALLBACK=gemini-2.5-flash,gemini-3-flash-preview
+          NADIRCLAW_MID_FALLBACK=gpt-4.1-mini,gemini-2.5-flash
+          NADIRCLAW_COMPLEX_FALLBACK=claude-sonnet-4-5-20250929,gpt-4.1
+
+        When a per-tier chain is set, it is used instead of the global chain.
+        If no per-tier chain is configured, falls back to the global FALLBACK_CHAIN.
+        """
+        env_key = f"NADIRCLAW_{tier.upper()}_FALLBACK"
+        raw = os.getenv(env_key, "")
+        if raw:
+            return [m.strip() for m in raw.split(",") if m.strip()]
+        return self.FALLBACK_CHAIN
 
     @property
     def MODEL_RATE_LIMITS(self) -> str:

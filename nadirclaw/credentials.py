@@ -157,6 +157,120 @@ def remove_credential(provider: str) -> bool:
     return False
 
 
+# OpenClaw provider name → NadirClaw provider name mapping.
+# OpenClaw uses different naming conventions for some providers.
+_OPENCLAW_PROVIDER_MAP = {
+    "google-gemini-cli": "google",
+    "openai-codex": "openai-codex",
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "cohere": "cohere",
+    "mistral": "mistral",
+}
+
+# Reverse map: NadirClaw name → possible OpenClaw names
+_NADIRCLAW_TO_OPENCLAW = {}
+for _oc, _nc in _OPENCLAW_PROVIDER_MAP.items():
+    _NADIRCLAW_TO_OPENCLAW.setdefault(_nc, []).append(_oc)
+
+
+def _openclaw_auth_profiles_path() -> Path:
+    """Return the path to OpenClaw's auth-profiles.json."""
+    return Path.home() / ".openclaw" / "agents" / "main" / "agent" / "auth-profiles.json"
+
+
+def _check_openclaw_with_refresh(provider: str) -> Optional[str]:
+    """Check OpenClaw auth-profiles for a token, refreshing if expired.
+
+    OpenClaw stores OAuth tokens with 'access', 'refresh', 'expires' (ms) fields.
+    Reads them and auto-refreshes expired tokens, saving the refreshed token
+    into NadirClaw's own credential store.
+    """
+    auth_profiles_path = _openclaw_auth_profiles_path()
+    if not auth_profiles_path.exists():
+        return None
+
+    # Determine which OpenClaw provider names to look for
+    openclaw_names = _NADIRCLAW_TO_OPENCLAW.get(provider, [provider])
+
+    try:
+        data = json.loads(auth_profiles_path.read_text())
+        profiles = data.get("profiles", {})
+        for profile in profiles.values():
+            if profile.get("provider") not in openclaw_names:
+                continue
+
+            if profile.get("type") != "oauth":
+                # API key profile — return the key directly
+                return profile.get("key") or profile.get("access")
+
+            access_token = profile.get("access")
+            refresh_tok = profile.get("refresh")
+            # OpenClaw stores expires in milliseconds
+            expires_ms = profile.get("expires", 0)
+            expires_at = expires_ms / 1000  # convert to seconds
+
+            if not access_token:
+                continue
+
+            # Check if token is still valid (with 60s buffer)
+            if time.time() < (expires_at - 60):
+                return access_token
+
+            # Token expired — try to refresh
+            if not refresh_tok:
+                logger.warning("OpenClaw token expired for %s, no refresh token", provider)
+                return access_token
+
+            refresh_func = _get_refresh_func(provider)
+            if not refresh_func:
+                logger.warning("No refresh function for provider %s (OpenClaw token)", provider)
+                return access_token
+
+            logger.info("Refreshing expired OpenClaw token for %s...", provider)
+            try:
+                token_data = refresh_func(refresh_tok)
+                new_access = token_data["access_token"]
+                new_refresh = token_data.get("refresh_token", refresh_tok)
+                new_expires_in = token_data.get("expires_in", 3600)
+                # Save refreshed token into NadirClaw's own store
+                save_oauth_credential(provider, new_access, new_refresh, new_expires_in)
+                logger.info("OpenClaw token refreshed for %s (expires in %ds)", provider, new_expires_in)
+                return new_access
+            except Exception as e:
+                logger.error("Failed to refresh OpenClaw token for %s: %s", provider, e)
+                return access_token  # return stale token as last resort
+
+    except (json.JSONDecodeError, OSError, KeyError) as e:
+        logger.debug("Could not read OpenClaw auth-profiles: %s", e)
+
+    return None
+
+
+def _check_openclaw(provider: str) -> Optional[str]:
+    """Check OpenClaw legacy config (~/.openclaw/openclaw.json) for a stored token."""
+    openclaw_path = Path.home() / ".openclaw" / "openclaw.json"
+    if not openclaw_path.exists():
+        return None
+
+    openclaw_names = _NADIRCLAW_TO_OPENCLAW.get(provider, [provider])
+
+    try:
+        config = json.loads(openclaw_path.read_text())
+        auth = config.get("auth", {})
+        # Check auth profiles
+        profiles = auth.get("profiles", {})
+        for profile in profiles.values():
+            if profile.get("provider") in openclaw_names and profile.get("token"):
+                return profile["token"]
+        # Check provider-specific keys
+        keys = auth.get("keys", {})
+        env_name = _ENV_VAR_MAP.get(provider, "")
+        if env_name and keys.get(env_name):
+            return keys[env_name]
+    except (json.JSONDecodeError, OSError, KeyError):
+        pass
+    return None
 
 
 
@@ -235,7 +349,9 @@ def get_credential(provider: str) -> Optional[str]:
     """Resolve a credential for a provider.
 
     Resolution order:
-      1. OpenClaw stored token (~/.openclaw/openclaw.json)
+      1. OpenClaw stored token (~/.openclaw/agents/main/agent/auth-profiles.json)
+         — with automatic OAuth refresh if expired
+      1b. OpenClaw legacy (~/.openclaw/openclaw.json)
       2. NadirClaw stored token (~/.nadirclaw/credentials.json)
          — with automatic OAuth refresh if expired
       3. Environment variable
@@ -247,9 +363,15 @@ def get_credential(provider: str) -> Optional[str]:
     Returns:
         The token string, or None if no credential found.
     """
+    # 1. OpenClaw auth-profiles (with auto-refresh for OAuth tokens)
+    token = _check_openclaw_with_refresh(provider)
+    if token:
+        return token
 
-
-
+    # 1b. OpenClaw legacy (openclaw.json)
+    token = _check_openclaw(provider)
+    if token:
+        return token
 
     # 2. NadirClaw stored credentials (with OAuth auto-refresh)
     creds = _read_credentials()
@@ -278,7 +400,9 @@ def get_credential_source(provider: str) -> Optional[str]:
 
     Returns one of: "openclaw", "oauth", "setup-token", "manual", "env", or None.
     """
-
+    # 1. OpenClaw (auth-profiles with OAuth + legacy)
+    if _check_openclaw_with_refresh(provider) or _check_openclaw(provider):
+        return "openclaw"
 
     # 2. NadirClaw stored
     creds = _read_credentials()
