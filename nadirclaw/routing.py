@@ -329,9 +329,16 @@ class SessionCache:
 
     Keyed by a hash of the system prompt + first user message.
     TTL-based expiry with LRU eviction to cap memory usage.
+
+    Upgrade-only policy: cached tier can only escalate (simple→mid→complex→
+    reasoning), never downgrade.  This prevents a complex session from being
+    pinned to "simple" while still avoiding jarring model switches downward.
     """
 
-    def __init__(self, ttl_seconds: int = 1800, max_size: int = 10_000):
+    # Tier ordering — higher index = more capable model.
+    TIER_ORDER = {"simple": 0, "mid": 1, "complex": 2, "reasoning": 3}
+
+    def __init__(self, ttl_seconds: int = 300, max_size: int = 10_000):
         # OrderedDict gives O(1) move-to-end (move_to_end) and O(1) popitem(last=False)
         # for LRU eviction — replaces the old List-based access_order which was O(n).
         self._cache: OrderedDict[str, Tuple[str, str, float]] = OrderedDict()  # key → (model, tier, timestamp)
@@ -372,7 +379,12 @@ class SessionCache:
             self._cache.popitem(last=False)
 
     def get(self, messages: List[Any]) -> Optional[Tuple[str, str]]:
-        """Return (model, tier) if a session exists and isn't expired."""
+        """Return (model, tier) if a session exists and isn't expired.
+
+        The caller is expected to *always* run the classifier after this.
+        If the new classification yields a higher tier, call
+        ``upgrade_if_higher`` to atomically escalate the cached entry.
+        """
         key = self._make_key(messages)
         with self._lock:
             entry = self._cache.get(key)
@@ -385,15 +397,53 @@ class SessionCache:
             self._touch(key)
             return model, tier
 
-    def put(self, messages: List[Any], model: str, tier: str) -> None:
-        """Store a routing decision for this session."""
+    def upgrade_if_higher(
+        self, messages: List[Any], new_model: str, new_tier: str
+    ) -> Tuple[str, str]:
+        """Upgrade the cached tier if *new_tier* outranks the stored one.
+
+        Returns the (model, tier) that should actually be used — either the
+        newly upgraded values or the previously cached ones.
+        """
         key = self._make_key(messages)
+        new_rank = self.TIER_ORDER.get(new_tier, 0)
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                # Nothing cached yet — store and return the new values.
+                self._cache[key] = (new_model, new_tier, time.time())
+                return new_model, new_tier
+            cached_model, cached_tier, _ts = entry
+            cached_rank = self.TIER_ORDER.get(cached_tier, 0)
+            if new_rank > cached_rank:
+                # Escalate — upgrade the cache entry.
+                self._cache[key] = (new_model, new_tier, time.time())
+                self._touch(key)
+                return new_model, new_tier
+            # Keep the existing (equal or higher) tier.
+            self._touch(key)
+            return cached_model, cached_tier
+
+    def put(self, messages: List[Any], model: str, tier: str) -> None:
+        """Store a routing decision for this session (upgrade-only).
+
+        If an entry already exists with a higher tier, this is a no-op.
+        """
+        key = self._make_key(messages)
+        new_rank = self.TIER_ORDER.get(tier, 0)
         with self._lock:
             # Periodic cleanup of expired entries
             self._cleanup_counter += 1
             if self._cleanup_counter >= self._cleanup_interval:
                 self._cleanup_counter = 0
                 self.clear_expired()
+
+            # Upgrade-only: don't downgrade an existing entry.
+            existing = self._cache.get(key)
+            if existing is not None:
+                _, cached_tier, _ = existing
+                if self.TIER_ORDER.get(cached_tier, 0) >= new_rank:
+                    return  # existing tier is equal or higher — skip
 
             self._cache[key] = (model, tier, time.time())
             self._touch(key)
@@ -415,7 +465,7 @@ class SessionCache:
 
 
 # Global session cache
-_session_cache = SessionCache(ttl_seconds=1800)
+_session_cache = SessionCache(ttl_seconds=300)
 
 
 def get_session_cache() -> SessionCache:
